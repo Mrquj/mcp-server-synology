@@ -2,9 +2,9 @@ import { z } from "zod";
 import { defineTool, humanBytes } from "../tool.js";
 
 /**
- * Container Manager (Docker) on DSM 7. These APIs are only present when the
- * package is installed, so every tool here fails with a clear "API does not
- * exist" message rather than a crash when it is not.
+ * Container Manager (Docker) on DSM 7. These APIs only exist when the package
+ * is installed, so each tool surfaces a clear "API does not exist on this DSM"
+ * message from the client rather than failing opaquely.
  */
 export const containerTools = [
   defineTool({
@@ -25,7 +25,7 @@ export const containerTools = [
       }>("SYNO.Docker.Container", "list", {
         offset: args.offset,
         limit: args.limit,
-ѕ        type: "all",
+        type: "all",
       });
 
       return {
