@@ -18,6 +18,19 @@ type DsmEnvelope<T> = {
   error?: { code: number; errors?: unknown };
 };
 
+/**
+ * The only body shapes this client sends. Spelled out rather than using the
+ * DOM's BodyInit, which is not in scope for a Node-only compilation.
+ */
+type RequestBody = string | FormData;
+
+type FetchInit = {
+  method: string;
+  body?: RequestBody;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+};
+
 export type RequestOptions = {
   /**
    * Preferred API version. The client clamps it to the range the DSM actually
@@ -29,7 +42,7 @@ export type RequestOptions = {
   timeoutMs?: number;
 };
 
-/** DSM wants JSON-ish scalars as bare strings and arrays as JSON text. */
+/** DSM wants scalars as bare strings and structured values as JSON text. */
 function encodeParam(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -71,7 +84,7 @@ export class DsmClient {
   /**
    * SYNO.API.Info is the only endpoint with a fixed path. Everything else is
    * looked up here, which is what lets the server work against DSM versions
-   * that moved an API to a different CGI.
+   * that moved an API to a different CGI handler.
    */
   async getApiInfo(): Promise<ApiInfoMap> {
     if (this.apiInfo) return this.apiInfo;
@@ -84,14 +97,12 @@ export class DsmClient {
       query: "all",
     }).toString();
 
-    const envelope = await this.fetchJson<ApiInfoMap>(url, {
-      method: "GET",
-    });
+    const envelope = await this.fetchJson<ApiInfoMap>(url, { method: "GET" });
     this.apiInfo = this.unwrap(envelope, "SYNO.API.Info", "query");
     return this.apiInfo;
   }
 
-  /** Clamps a preferred version into the range the DSM supports. */
+  /** Clamps a preferred version into the range this DSM supports. */
   private async resolve(
     api: string,
     preferred?: number,
@@ -300,7 +311,7 @@ export class DsmClient {
       }
       form.set(
         "file",
-        new Blob([file.bytes as BlobPart], {
+        new Blob([file.bytes], {
           type: file.contentType ?? "application/octet-stream",
         }),
         file.filename,
@@ -360,11 +371,7 @@ export class DsmClient {
     }
   }
 
-  private unwrap<T>(
-    envelope: DsmEnvelope<T>,
-    api: string,
-    method: string,
-  ): T {
+  private unwrap<T>(envelope: DsmEnvelope<T>, api: string, method: string): T {
     if (envelope.success) return envelope.data as T;
 
     const code = envelope.error?.code ?? 100;
@@ -379,12 +386,7 @@ export class DsmClient {
 
   private async fetchJson<T>(
     url: URL,
-    init: {
-      method: string;
-      body?: BodyInit;
-      headers?: Record<string, string>;
-      timeoutMs?: number;
-    },
+    init: FetchInit,
   ): Promise<DsmEnvelope<T>> {
     const response = await this.rawFetch(url, init);
     const text = await response.text();
@@ -398,15 +400,7 @@ export class DsmClient {
   }
 
   /** Single place where the timeout, TLS agent and retry loop are applied. */
-  private async rawFetch(
-    url: URL,
-    init: {
-      method: string;
-      body?: BodyInit;
-      headers?: Record<string, string>;
-      timeoutMs?: number;
-    },
-  ): Promise<Response> {
+  private async rawFetch(url: URL, init: FetchInit): Promise<Response> {
     const timeoutMs = init.timeoutMs ?? this.credentials.timeoutMs;
     let lastError: unknown;
 
@@ -432,8 +426,7 @@ export class DsmClient {
         return response;
       } catch (error) {
         lastError = error;
-        const isLast = attempt === this.credentials.maxRetries;
-        if (isLast) break;
+        if (attempt === this.credentials.maxRetries) break;
         await delay(300 * 2 ** attempt);
       } finally {
         clearTimeout(timer);
@@ -469,7 +462,10 @@ function normalizeNetworkError(error: unknown, baseUrl: string): Error {
         `Connection refused by ${baseUrl}. Check the DSM port and that the tunnel forwards it.`,
       );
     }
-    if (code === "DEPTH_ZERO_SELF_SIGNED_CERT" || code === "SELF_SIGNED_CERT_IN_CHAIN") {
+    if (
+      code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+      code === "SELF_SIGNED_CERT_IN_CHAIN"
+    ) {
       return new Error(
         "DSM uses a self-signed certificate. Set SYNOLOGY_INSECURE_TLS=true if this is a trusted LAN or tunnel.",
       );
