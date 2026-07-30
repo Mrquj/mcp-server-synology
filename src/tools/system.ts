@@ -6,15 +6,15 @@ export const systemTools = [
     name: "get_system_info",
     title: "Get NAS system information",
     description:
-      "Returns the NAS model, DSM version, serial number, uptime, temperature and firmware update availability. Use this for a general health check of the Synology.",
+      "Returns the NAS model, DSM version, serial number, uptime and temperature. Use this for a general health check of the Synology.",
     readOnly: true,
     idempotent: true,
     schema: z.object({}),
     handler: async (ctx) => {
-      const info = await ctx.client.request<Record<string, unknown>>(
+      const info = await ctx.client.request<Record<string, any>>(
         "SYNO.Core.System",
         "info",
-        { type: "\"\"" },
+        { type: '""' },
       );
 
       const uptimeSeconds = Number(info.up_time ?? 0);
@@ -35,7 +35,6 @@ export const systemTools = [
               ? `${Math.floor(uptimeSeconds / 86400)}d ${Math.floor((uptimeSeconds % 86400) / 3600)}h`
               : undefined,
         time: info.time,
-        ntpEnabled: info.ntp_server ? true : false,
       };
     },
   }),
@@ -76,7 +75,6 @@ export const systemTools = [
           totalMemory: humanBytes(Number(memory.total_real ?? 0) * 1024),
           available: humanBytes(Number(memory.avail_real ?? 0) * 1024),
           cached: humanBytes(Number(memory.cached ?? 0) * 1024),
-          swapUsed: humanBytes(Number(memory.total_swap ?? 0) * 1024),
         },
         network: network.map((iface: Record<string, unknown>) => ({
           device: iface.device,
@@ -153,7 +151,7 @@ export const systemTools = [
     name: "list_installed_packages",
     title: "List installed DSM packages",
     description:
-      "Lists the packages installed on the NAS with their version and running state. Use this to check whether Download Station, Photos, Container Manager or Drive are available before calling their tools.",
+      "Lists the packages installed on the NAS with their version and running state. Use this to check whether Download Station, Photos or Container Manager are available before calling their tools.",
     readOnly: true,
     idempotent: true,
     schema: z.object({
@@ -225,7 +223,7 @@ export const systemTools = [
           from: item.from,
           protocol: item.type,
           since: isoTime(Number(item.time) || undefined),
-ുഒ        })),
+        })),
       };
     },
   }),
@@ -244,9 +242,12 @@ export const systemTools = [
     }),
     handler: async (ctx, args) => {
       ctx.policy.assertSystemControl(`control_system_power(${args.action})`);
-      await ctx.client.request("SYNO.Core.System", args.action, {}, {
-        method: "POST",
-      });
+      await ctx.client.request(
+        "SYNO.Core.System",
+        args.action,
+        {},
+        { method: "POST" },
+      );
       return {
         action: args.action,
         note:
